@@ -10,7 +10,8 @@ const fileList = [
   'babau-buzzurro',
   'cabina-carrozzina',
   'da-dileguarsi',
-  'diletto-duttile'
+  'diletto-duttile',
+  'e-extra',
 ];
 
 void main(List<String> arguments) {
@@ -28,8 +29,9 @@ void main(List<String> arguments) {
     combine: argResults['combine'] as bool,
   );
 }
-//TODO fix very last line to remove leading space
 
+//TODO fix very last line to remove leading space
+//TODO Check that sentences are of a consistent font type
 Future<void> ocr(List<String> paths,
     {bool processAll = false, bool combine = false}) async {
   String combinedFile = '';
@@ -84,14 +86,17 @@ List<String> removeBlankLines(List<String> markdown) {
   RegExp exp2 = RegExp(r'^\> \*\\\|\*$');
   // match "> **\|**"
   RegExp exp3 = RegExp(r'^\> \*\*\\\|\*\*$');
+  // match "> **\|**"
+  RegExp exp4 = RegExp(r'^\> \*\*\*\\\|\*\*\*$');
   // match "> "
-  RegExp exp4 = RegExp(r'^> *$');
+  RegExp exp5 = RegExp(r'^> *$');
   for (final line in markdown) {
     bool match1 = exp1.hasMatch(line);
     bool match2 = exp2.hasMatch(line);
     bool match3 = exp3.hasMatch(line);
     bool match4 = exp4.hasMatch(line);
-    if (match1 || match2 || match3 || match4) {
+    bool match5 = exp5.hasMatch(line);
+    if (match1 || match2 || match3 || match4 || match5) {
     } else {
       parsedMarkdown.add(line);
     }
@@ -108,27 +113,18 @@ List<String> joinLines(List<String> markdown) {
     String line = markdown[i];
     bool match1 = exp1.hasMatch(line);
     if (match1) {
-      if (i == 0) {
-        if (exp1.hasMatch(markdown[1])) {
-          parsedMarkdown.add(cleanOCRErrors(line));
-        }
-      } else if (i == markdown.length - 1) {
-        parsedMarkdown.add(cleanOCRErrors(line.substring(2)));
-      } else {
+      if (i == markdown.length - 1) {
         currentLine = '$currentLine ${line.substring(2)}';
+        currentLine = processCurrentLine(currentLine.substring(2));
+        parsedMarkdown.add(currentLine);
+      } else {
+        print('line: $line');
+        currentLine = '$currentLine ${line.substring(2)}';
+        print(currentLine);
       }
+      // Else it's a header line so add the line and current line.
     } else {
-      currentLine = removeTabs(currentLine);
-      // print(currentLine);
-      currentLine = collapseWhiteSpace(currentLine);
-      currentLine = convertBoldItalics(currentLine);
-      currentLine = tidyItalics(currentLine);
-      currentLine = tidyHyphens(currentLine);
-      currentLine = tidyCommasAndDots(currentLine);
-      currentLine = cleanOCRErrors(currentLine);
-      // print(currentLine);
-      currentLine = splitLines(currentLine);
-      currentLine = removeBlanks(currentLine);
+      currentLine = processCurrentLine(currentLine);
       parsedMarkdown.add(currentLine);
       // Header Line
       parsedMarkdown.add(line);
@@ -136,6 +132,25 @@ List<String> joinLines(List<String> markdown) {
     }
   }
   return parsedMarkdown;
+}
+
+String processCurrentLine(String line) {
+  line = removeTabs(line);
+  // print(line);
+  line = collapseWhiteSpace(line);
+  if (line.contains('issimo')) {
+    print('$line');
+  }
+  line = convertBoldItalics(line);
+  line = tidyItalics(line);
+  line = tidyHyphens(line);
+  line = underscoresToHyphens(line);
+  line = tidyCommasAndDots(line);
+  line = cleanOCRErrors(line);
+  // print(line);
+  line = splitLines(line);
+  line = removeBlanks(line);
+  return line;
 }
 
 List<String> makeHeader(List<String> markdown) {
@@ -146,20 +161,36 @@ List<String> makeHeader(List<String> markdown) {
   RegExp headerExp2 = RegExp(r'^> \*\*(\w.*?)\\\|(.*)\*\*');
   // Header of form HEADER\|Definition\n
   RegExp headerExp3 = RegExp(r'^> ([A-Z]+)\\\|(.*)');
+// Header of form **WORD\| *(words)*** other stuff
+  RegExp headerExp4 = RegExp(r'^> \*\*(\w.*?)\\\| \*\((.*?)\)\*\*\*(.*)');
 
   for (var i = 0; i < markdown.length; i++) {
     String line = markdown[i];
     Iterable<RegExpMatch> headerMatches1 = headerExp1.allMatches(line);
     Iterable<RegExpMatch> headerMatches2 = headerExp2.allMatches(line);
     Iterable<RegExpMatch> headerMatches3 = headerExp3.allMatches(line);
-    if (headerMatches1.isNotEmpty) {
+    Iterable<RegExpMatch> headerMatches4 = headerExp4.allMatches(line);
+    if (headerMatches4.isNotEmpty) {
+      // print('header4: $line');
+      var headerMatch = headerMatches4.elementAt(0);
+      if (headerMatch.group(1) != null) {
+        String headerStr = '# ${headerMatch.group(1)}';
+        headerStr = underscoresToHyphens(headerStr);
+        parsedHeader.add(headerStr);
+        String definition = '';
+        definition = '> *(${headerMatch.group(2)!})*${headerMatch.group(3)!}';
+        definition = collapseWhiteSpace(definition);
+        // print('definition: $definition');
+        parsedHeader.add(definition);
+      }
+    } else if (headerMatches1.isNotEmpty) {
       var headerMatch = headerMatches1.elementAt(0);
       if (headerMatch.group(1) != null) {
         String headerStr = '# ${headerMatch.group(1)}';
+        headerStr = underscoresToHyphens(headerStr);
         parsedHeader.add(headerStr);
         String definition = '> ${line.substring(headerMatch.end)}';
 
-        // parsedHeader.add(tidyDefinition(definition));
         parsedHeader.add(definition);
         // print('$headerStr: $definition');
       }
@@ -169,12 +200,12 @@ List<String> makeHeader(List<String> markdown) {
           : headerMatches3.elementAt(0);
       if (headerMatch.group(1) != null) {
         String headerStr = '# ${headerMatch.group(1)}';
+        headerStr = underscoresToHyphens(headerStr);
         parsedHeader.add(headerStr);
         String definition = '';
         definition = '> ${headerMatch.group(2)!}';
         definition = collapseWhiteSpace(definition);
 
-        // parsedHeader.add(tidyDefinition(definition));
         parsedHeader.add(definition);
       }
     } else {
@@ -198,6 +229,7 @@ String cleanOCRErrors(String line) {
   line = line.replaceAll("'1", "'l");
   line = line.replaceAll("\\^6\\^", "'");
   line = line.replaceAll("\\^9\\^", "'");
+  line = line.replaceAll("\^9\^", "'");
   line = line.replaceAll("\\^66\\^", '"');
   line = line.replaceAll(RegExp('• *'), '');
 
@@ -210,6 +242,8 @@ String collapseWhiteSpace(String line) {
   // Collapse whitespace
   line = line.replaceAll(RegExp(r'\s{2,}'), ' ');
   line = line.replaceFirst(RegExp(r'\*\*VEDI.*\*\*'), ' ');
+  // This is the last item in the line so need to do a fancy search
+  line = line.replaceFirst(RegExp(r'VEDI.*'), ' ');
   return line;
 }
 
@@ -223,10 +257,10 @@ String tidyItalics(String line) {
   line = line.replaceAllMapped(RegExp(r' \* (\w)'), (Match m) => ' *${m[1]}');
   // Fix (word *word)* word to *(words)* word
   if (line.contains(RegExp(r'^\*\((\w.*?)\*(\w.*?)\)\*'))) {
-    print('bef: $line');
+    // print('bef: $line');
     line = line.replaceAllMapped(RegExp(r'^\*\((\w.*?)\*(\w.*?)\)\*'),
         (Match m) => ' *(${m[1]}${m[2]})*');
-    print('aft: $line');
+    // print('aft: $line');
   }
   return line;
 }
@@ -251,14 +285,9 @@ String tidyHyphens(String line) {
   return line;
 }
 
-String tidyDefinition(String line) {
-  String cleanLine = '';
-
-  // Collapse ** to *
-  cleanLine = cleanLine.replaceAllMapped(
-      RegExp(r'\*\*^\*(.*)\*\*^\*'), (Match m) => '*${m[1]}*');
-
-  return cleanLine;
+String underscoresToHyphens(String line) {
+  line = line.replaceAll('_', '-');
+  return line;
 }
 
 String splitLines(String line) {
@@ -277,7 +306,7 @@ String splitLines(String line) {
   }
   // Split line before italics
   if (line.contains(RegExp(r'( )\*(\w)'))) {
-    print('splitLines: $line');
+    // print('splitLines: $line');
   }
   line = line.replaceAllMapped(
       RegExp(r'( )\*(\w)'), (Match m) => '${m[1]}\n*${m[2]}');
@@ -309,8 +338,9 @@ String tidyCommasAndDots(String line) {
   line = line.replaceAllMapped(RegExp(r',(\S)'), (Match m) => ', ${m[1]}');
 
   // remove multiple dots
-  line = line.replaceAll(RegExp(r'\.\.\.\.*'), '.');
-  if (line.contains('...')) {
+  line = line.replaceAll(RegExp(r'\.{4,}'), '.');
+  if (line.contains('...') || line.contains('\\...')) {
+    print('tidyDots: $line');
   } else if (line.contains('..')) {
     line = line.replaceAll('..', '.');
   }
@@ -329,7 +359,15 @@ Future<String> docxToMarkdown(String fileName) async {
   var docx = '$fileName.docx';
   var markdown = '$fileName.md';
 
-  var result = await Process.run(
-      'pandoc', ['-f', 'docx', '-t', 'markdown', '-o', '$markdown', '$docx']);
+  var result = await Process.run('pandoc', [
+    '--wrap=none',
+    '-f',
+    'docx',
+    '-t',
+    'markdown',
+    '-o',
+    '$markdown',
+    '$docx'
+  ]);
   return markdown;
 }
